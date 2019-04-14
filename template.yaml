@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS Step Functions sample project for scheduling tasks
+Resources:
+  SNSTopic:
+    Type: AWS::SNS::Topic
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: SNSPublishPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "SNS:Publish"
+                Resource: "*"
+
+  TaskTimerStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      DefinitionString:
+        !Sub |-
+          {
+            "StartAt": "Wait for Timestamp",
+            "States": {
+              "Wait for Timestamp": {
+                "Type": "Wait",
+                "SecondsPath": "$.timer_seconds",
+                "Next": "Publish to SNS"
+              },
+              "Publish to SNS": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNSTopic}",
+                  "Subject.$": "$.subject",
+                  "Message.$": "$.message"
+                },
+                "End": true
+              }
+            }
+          }
+      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]
+
+Outputs:
+  StateMachineArn:
+    Value:
+      Ref: TaskTimerStateMachine
